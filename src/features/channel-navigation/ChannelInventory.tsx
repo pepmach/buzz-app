@@ -20,6 +20,10 @@ import type { RelaySession } from "../relay/session";
 import { useChannelList } from "../relay/react";
 import type { Navigation } from "../navigation/controller";
 import type { OpenTarget } from "../navigation/targets";
+import type {
+  RegisteredSidebarSection,
+  SidebarSections,
+} from "./sidebar-sections-service";
 import type { SidebarFrame } from "./SidebarFrame";
 import { Button } from "../../shared/design-system/ui/Button";
 import {
@@ -67,9 +71,12 @@ import { useSidebarView } from "../../bundled/channels/useSidebarView";
 import { useSidebarFilters } from "../../bundled/channels/useSidebarFilters";
 import {
   sidebarSections,
+  contributedSidebarSectionKey,
   isChannelSectionKey,
   isChannelDropSectionKey,
+  orderContributedSidebarSections,
 } from "../../bundled/channels/sidebar-sections";
+import { SidebarContributionSection } from "./SidebarContributionSection";
 import {
   CreateChannelDialog,
   type CreateChannelInput,
@@ -94,6 +101,16 @@ type Inventory = {
   dialogs: ReactNode;
 };
 
+const noSubscription = () => () => {};
+const emptyContributions: readonly RegisteredSidebarSection[] = [];
+const noSidebarSections = () => emptyContributions;
+const emptySidebarSections: SidebarSections = {
+  version: 1,
+  snapshot: noSidebarSections,
+  subscribe: noSubscription,
+  register: () => {},
+};
+
 /** Channel data, actions and notices; the primary sidebar owns their framing. */
 export function ChannelInventory({
   relay,
@@ -106,6 +123,7 @@ export function ChannelInventory({
   connectionError,
   scope,
   viewer,
+  sidebarSections: contributedSections,
   render,
 }: {
   relay: RelayData;
@@ -119,8 +137,14 @@ export function ChannelInventory({
   connectionError?: string | undefined;
   scope: string;
   viewer?: string | undefined;
+  sidebarSections?: SidebarSections | undefined;
   render(inventory: Inventory): ReactNode;
 }) {
+  const contributions = useSyncExternalStore(
+    contributedSections?.subscribe ?? noSubscription,
+    contributedSections?.snapshot ?? noSidebarSections,
+    contributedSections?.snapshot ?? noSidebarSections,
+  );
   const list = useChannelList(queries.channels);
   const recoveryShown = useRecoveryShown(queries.recovery);
   const preferences = useSidebarPreferences(queries.sidebarPreferences);
@@ -533,6 +557,21 @@ export function ChannelInventory({
   // Group drags land on the placement drop targets, so they need both writers.
   const orderWritable = placementWritable && preferences.sectionOrderWritable;
   const groupIds = preferences.data?.sections.map(({ id }) => id) ?? [];
+  const orderedContributions = orderContributedSidebarSections(
+    contributions,
+    sidebar.contributionOrder,
+  );
+  const reorderContributions = (sectionKey: string, overKey: string) => {
+    const key = sectionKey.replace(/^plugin:/, "");
+    const over = overKey.replace(/^plugin:/, "");
+    const ids = orderedContributions.map(({ key }) => key);
+    const from = ids.indexOf(key);
+    const to = ids.indexOf(over);
+    if (from < 0 || to < 0) return;
+    ids.splice(from, 1);
+    ids.splice(to, 0, key);
+    sidebar.setContributionOrder(ids);
+  };
   const moveGroup = (sectionId: string, to: number) => {
     const ids = groupIds.filter((id) => id !== sectionId);
     ids.splice(to, 0, sectionId);
@@ -1057,10 +1096,12 @@ export function ChannelInventory({
                 )
           }
           onReorder={(sectionKey, overKey) =>
-            moveGroup(
-              sectionKey.slice("group:".length),
-              groupIds.indexOf(overKey.slice("group:".length)),
-            )
+            sectionKey.startsWith("plugin:")
+              ? reorderContributions(sectionKey, overKey)
+              : moveGroup(
+                  sectionKey.slice("group:".length),
+                  groupIds.indexOf(overKey.slice("group:".length)),
+                )
           }
           overlay={(id, group) => {
             if (group) {
@@ -1273,6 +1314,49 @@ export function ChannelInventory({
               })}
             </DroppableSidebarSection>
           ))}
+          {orderedContributions.map((entry, index) => {
+            const sectionKey = contributedSidebarSectionKey(entry.key);
+            const previousKey = orderedContributions[index - 1]?.key;
+            const nextKey = orderedContributions[index + 1]?.key;
+            const reorderable = contributions.length > 1;
+            return (
+              <SidebarContributionSection
+                key={entry.key}
+                entry={entry}
+                registry={contributedSections ?? emptySidebarSections}
+                navigator={navigator}
+                target={target}
+                open={!sidebar.collapsed.includes(sectionKey)}
+                onToggle={(open) => sidebar.toggle(sectionKey, open)}
+                groupIndex={index}
+                reorderable={reorderable}
+                move={
+                  reorderable
+                    ? {
+                        ...(previousKey
+                          ? {
+                              up: () =>
+                                reorderContributions(
+                                  sectionKey,
+                                  contributedSidebarSectionKey(previousKey),
+                                ),
+                            }
+                          : {}),
+                        ...(nextKey
+                          ? {
+                              down: () =>
+                                reorderContributions(
+                                  sectionKey,
+                                  contributedSidebarSectionKey(nextKey),
+                                ),
+                            }
+                          : {}),
+                      }
+                    : undefined
+                }
+              />
+            );
+          })}
         </ChannelSidebarDnd>
         {!startup.ready && (
           <p className={styles.empty} role="status">

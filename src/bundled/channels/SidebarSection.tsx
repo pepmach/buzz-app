@@ -57,6 +57,8 @@ export function SidebarSection({
   session,
   open,
   onToggle,
+  headerActions,
+  hideMoreActions = false,
   createChannel,
   newMessage,
   sort,
@@ -76,11 +78,13 @@ export function SidebarSection({
   sectionKey: string;
   title: string;
   hideTitle?: boolean;
-  icon?: string | undefined;
+  icon?: ReactNode;
   session?: RelaySession | undefined;
   open: boolean;
   onToggle: (open: boolean) => void;
+  headerActions?: ReactNode;
   onRemove?: (() => unknown) | undefined;
+  hideMoreActions?: boolean;
   channelCount?: number | undefined;
   removalFocus?: (() => HTMLElement | null | undefined) | undefined;
   createChannel?:
@@ -196,9 +200,11 @@ export function SidebarSection({
             <span className={styles.sectionLabel}>
               {sectionKey === "starred" ? (
                 <SidebarStarIcon />
-              ) : icon && session ? (
+              ) : typeof icon === "string" && session ? (
                 <SidebarGroupIcon icon={icon} session={session} />
-              ) : null}
+              ) : (
+                icon
+              )}
               <FadingLabel className={styles.sectionTitle}>{title}</FadingLabel>
             </span>
             <span className={`${styles.sidebarIcon} ${styles.sectionChevron}`}>
@@ -213,6 +219,7 @@ export function SidebarSection({
               render={(props) => (
                 <IconButton
                   {...props}
+                  hidden={hideMoreActions}
                   size="compact"
                   aria-label={`More actions for ${title}`}
                   icon={<DotsThreeIcon strokeWidth={2.5} size={15} />}
@@ -410,6 +417,7 @@ export function SidebarSection({
               )}
             </MenuPopup>
           </MenuRoot>
+          {headerActions}
           {newMessage && (
             <IconButton
               size="compact"
