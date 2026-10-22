@@ -173,7 +173,7 @@ export function DroppableSidebarSection({
 }) {
   const { setNodeRef, isOver, active } = useDroppable({
     id: section.sectionKey,
-    data: { groupIndex, groupDomain },
+    data: { group: true, groupIndex, groupDomain },
     disabled,
     // dnd-kit queues a re-measure of only the droppable that resized and clears
     // that queue after each render, losing ids queued in between: a section
